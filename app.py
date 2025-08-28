@@ -60,7 +60,7 @@ def enc(uid):
     encrypted_uid = encrypt_message(protobuf_data)
     return encrypted_uid
 
-def make_request_threaded(encrypt, region, token, session, results, index):
+async def make_request_async(encrypt, region, token, session):
     try:
         if region == "IND":
             url = "https://client.ind.freefiremobile.com/GetPlayerPersonalShow"
@@ -82,14 +82,14 @@ def make_request_threaded(encrypt, region, token, session, results, index):
             'ReleaseVersion': "OB50"
         }
         
-        with session.post(url, data=edata, headers=headers, ssl=False, timeout=5) as response:
+        async with session.post(url, data=edata, headers=headers, ssl=False, timeout=5) as response:
             if response.status != 200:
-                results[index] = None
+                return None
             else:
-                binary = response.read()
-                results[index] = decode_protobuf(binary)
+                binary = await response.read()
+                return decode_protobuf(binary)
     except Exception as e:
-        results[index] = None
+        return None
 
 def decode_protobuf(binary):
     try:
@@ -98,6 +98,22 @@ def decode_protobuf(binary):
         return items
     except Exception as e:
         return None
+
+def extract_player_info(protobuf_obj):
+    if not protobuf_obj:
+        return None, None, None
+    
+    try:
+        # Extract information directly from the protobuf object
+        if hasattr(protobuf_obj, 'AccountInfo'):
+            account_info = protobuf_obj.AccountInfo
+            player_name = account_info.PlayerNickname if account_info.PlayerNickname else None
+            player_level = account_info.Levels if account_info.Levels else None
+            player_likes = account_info.Likes if account_info.Likes else None
+            return player_name, player_level, player_likes
+        return None, None, None
+    except Exception as e:
+        return None, None, None
 
 @app.route('/visit', methods=['GET'])
 async def visit():
@@ -122,31 +138,21 @@ async def visit():
         player_name = None
         player_level = None
         player_likes = None
-        total_responses = []
         
         async with aiohttp.ClientSession() as session:
-            results = [None] * (len(tokens) * 20)
-            threads = []
-            for i, token in enumerate(tokens):
-                for j in range(20):
-                    thread = threading.Thread(target=make_request_threaded, args=(encrypted_target_uid, region, token['token'], session, results, i * 20 + j))
-                    threads.append(thread)
-                    thread.start()
+            tasks = []
+            for token in tokens:
+                for _ in range(20):
+                    tasks.append(make_request_async(encrypted_target_uid, region, token['token'], session))
             
-            for thread in threads:
-                thread.join()
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
             
-            for info in results:
-                total_responses.append(info)
-                if info:
-                    if not player_name:
-                        jsone = MessageToJson(info)
-                        data_info = json.loads(jsone)
-                        account_info = data_info.get('AccountInfo', {})
-                        player_name = account_info.get('PlayerNickname', '')
-                        player_level = account_info.get('Levels', 0)
-                        player_likes = account_info.get('Likes', 0)
+            for response in responses:
+                if response and isinstance(response, CSVisit_count_pb2.Info):
                     success_count += 1
+                    # Extract player info from the first successful response
+                    if player_name is None:
+                        player_name, player_level, player_likes = extract_player_info(response)
                 else:
                     failed_count += 1
                 
@@ -158,7 +164,7 @@ async def visit():
             "PlayerLevel": player_level,
             "PlayerLikes": player_likes,
             "UID": int(target_uid),
-            "TotalResponses": len(total_responses)
+            "TotalResponses": len(responses)
         }
         
         return jsonify(summary)
