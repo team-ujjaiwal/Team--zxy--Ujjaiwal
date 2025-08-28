@@ -18,6 +18,9 @@ import CSVisit_count_pb2
 
 app = Flask(__name__)
 
+# Initialize API keys set
+api_keys = set()
+
 def load_tokens(region):
     try:
         if region == "IND":
@@ -115,8 +118,47 @@ def extract_player_info(protobuf_obj):
     except Exception as e:
         return None, None, None
 
+# Key management endpoints
+@app.route('/make_key', methods=['GET'])
+def make_key():
+    key = request.args.get('key')
+    if not key:
+        return jsonify({'error': 'Missing key parameter'}), 400
+    api_keys.add(key)  # Add key to the set
+    return jsonify({'message': 'Key added successfully', 'key': key}), 200
+
+@app.route('/del_key', methods=['GET'])
+def del_key():
+    key = request.args.get('key')
+    if not key:
+        return jsonify({'error': 'Missing key parameter'}), 400
+    if key in api_keys:
+        api_keys.remove(key)
+        return jsonify({'message': 'Key deleted successfully', 'key': key}), 200
+    else:
+        return jsonify({'error': 'Key not found'}), 404
+
+@app.route('/del_all_keys', methods=['GET'])
+def del_all_keys():
+    api_keys.clear()
+    return jsonify({'message': 'All keys deleted successfully'}), 200
+
+@app.route('/all_keys', methods=['GET'])
+def all_keys():
+    return jsonify({'keys': list(api_keys)}), 200
+
+# Verify key function
+def verify_key(key):
+    return key in api_keys
+
+# Protect the visit endpoint with API key authentication
 @app.route('/visit', methods=['GET'])
 async def visit():
+    # Check for API key
+    api_key = request.args.get("key")
+    if not api_key or not verify_key(api_key):
+        return jsonify({"error": "Valid API key is required"}), 401
+        
     target_uid = request.args.get("uid")
     region = request.args.get("region", "").upper()
     
