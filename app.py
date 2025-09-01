@@ -1,218 +1,252 @@
-from flask import Flask, request, jsonify
-import json
-import binascii
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
+from flask import Flask, jsonify
 import aiohttp
 import asyncio
-import urllib3
-from datetime import datetime, timedelta
-import os
-import threading
-from functools import lru_cache
-import time
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-from google.protobuf.json_format import MessageToJson
-import uid_generator_pb2
-import CSVisit_count_pb2
+import json
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from visit_count_pb2 import Info
 
 app = Flask(__name__)
 
-# Initialize API keys set
-api_keys = set()
+# Content from byte.py
+dec = ['80', '81', '82', '83', '84', '85', '86', '87', '88', '89', '8a', '8b', '8c', '8d', '8e', '8f', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99', '9a', '9b', '9c', '9d', '9e', '9f', 'a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'aa', 'ab', 'ac', 'ad', 'ae', 'af', 'b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'ba', 'bb', 'bc', 'bd', 'be', 'bf', 'c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'ca', 'cb', 'cc', 'cd', 'ce', 'cf', 'd0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'da', 'db', 'dc', 'dd', 'de', 'df', 'e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9', 'ea', 'eb', 'ec', 'ed', 'ee', 'ef', 'f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff']
+x = ['1','01', '02', '03', '04', '05', '06', '07', '08', '09', '0a', '0b', '0c', '0d', '0e', '0f', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '1a', '1b', '1c', '1d', '1e', '1f', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '2a', '2b', '2c', '2d', '2e', '2f', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '3a', '3b', '3c', '3d', '3e', '3f', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '4a', '4b', '4c', '4d', '4e', '4f', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '5a', '5b', '5c', '5d', '5e', '5f', '60', '61', '62', '63', '64', '65', '66', '67', '68', '69', '6a', '6b', '6c', '6d', '6e', '6f', '70', '71', 
+'72', '73', '74', '75', '76', '77', '78', '79', '7a', '7b', '7c', '7d', '7e', '7f']
 
-def load_tokens(region):
-    try:
-        if region == "IND":
-            with open("token_ind.json", "r") as f:
-                tokens = json.load(f)
-        elif region in {"BR", "US", "SAC", "NA"}:
-            with open("token_br.json", "r") as f:
-                tokens = json.load(f)
+def encrypt_packet(plain_text):
+    plain_text = bytes.fromhex(plain_text)
+    key = bytes([101, 116, 33, 120, 72, 83, 97, 119, 82, 94, 37, 56, 74, 50, 83, 53])
+    iv = bytes([84, 76, 82, 118, 120, 100, 114, 114, 117, 51, 37, 80, 85, 113, 65, 54])
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
+    return cipher_text.hex()
+
+def Decrypt_ID(da):
+    if da != None and len(da) == 10:
+        w = 128
+        xxx = len(da)/2-1
+        xxx = str(xxx)[:1]
+        for i in range(int(xxx)-1):
+            w = w*128
+        x1 = da[:2]
+        x2 = da[2:4]
+        x3 = da[4:6]
+        x4 = da[6:8]
+        x5 = da[8:10]
+        return str(w*x.index(x5)+(dec.index(x2)*128)+dec.index(x1)+(dec.index(x3)*128*128)+(dec.index(x4)*128*128*128))
+
+    if da != None and len(da) == 8:
+        w = 128
+        xxx = len(da)/2-1
+        xxx = str(xxx)[:1]
+        for i in range(int(xxx)-1):
+            w = w*128
+        x1 = da[:2]
+        x2 = da[2:4]
+        x3 = da[4:6]
+        x4 = da[6:8]
+        return str(w*x.index(x4)+(dec.index(x2)*128)+dec.index(x1)+(dec.index(x3)*128*128))
+    
+    return None
+    
+def Encrypt_ID(x):
+    x = int(x)
+    dec = ['80', '81', '82', '83', '84', '85', '86', '87', '88', '89', '8a', '8b', '8c', '8d', '8e', '8f', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99', '9a', '9b', '9c', '9d', '9e', '9f', 'a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'aa', 'ab', 'ac', 'ad', 'ae', 'af', 'b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'ba', 'bb', 'bc', 'bd', 'be', 'bf', 'c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'ca', 'cb', 'cc', 'cd', 'ce', 'cf', 'd0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'da', 'db', 'dc', 'dd', 'de', 'df', 'e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9', 'ea', 'eb', 'ec', 'ed', 'ee', 'ef', 'f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff']
+    xxx = ['1','01', '02', '03', '04', '05', '06', '07', '08', '09', '0a', '0b', '0c', '0d', '0e', '0f', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '1a', '1b', '1c', '1d', '1e', '1f', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '2a', '2b', '2c', '2d', '2e', '2f', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '3a', '3b', '3c', '3d', '3e', '3f', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '4a', '4b', '4c', '4d', '4e', '4f', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '5a', '5b', '5c', '5d', '5e', '5f', '60', '61', '62', '63', '64', '65', '66', '67', '68', '69', '6a', '6b', '6c', '6d', '6e', '6f', '70', '71', 
+    '72', '73', '74', '75', '76', '77', '78', '79', '7a', '7b', '7c', '7d', '7e', '7f']
+    x = x/128 
+    if x > 128:
+        x = x/128
+        if x > 128:
+            x = x/128
+            if x > 128:
+                x = x/128
+                strx = int(x)
+                y = (x - int(strx)) * 128
+                stry = str(int(y))
+                z = (y - int(stry)) * 128
+                strz = str(int(z))
+                n = (z - int(strz)) * 128
+                strn = str(int(n))
+                m = (n - int(strn)) * 128
+                return dec[int(m)] + dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
+            else:
+                strx = int(x)
+                y = (x - int(strx)) * 128
+                stry = str(int(y))
+                z = (y - int(stry)) * 128
+                strz = str(int(z))
+                n = (z - int(strz)) * 128
+                strn = str(int(n))
+                return dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
         else:
-            with open("token_bd.json", "r") as f:
-                tokens = json.load(f)
+            strx = int(x)
+            y = (x - int(strx)) * 128
+            stry = str(int(y))
+            z = (y - int(stry)) * 128
+            strz = str(int(z))
+            return dec[int(z)] + dec[int(y)] + xxx[int(x)] 
+    else:
+        strx = int(x)
+        if strx == 0:
+            y = (x - int(strx)) * 128
+            inty = int(y)
+            return xxx[inty]
+        else:
+            y = (x - int(strx)) * 128
+            stry = str(int(y))
+            return dec[int(y)] + xxx[int(x)]
+
+def decrypt_packet(packet):
+    packet = bytes.fromhex(packet)
+    key = bytes([101, 116, 33, 120, 72, 83, 97, 119, 82, 94, 37, 56, 74, 50, 83, 53])
+    iv = bytes([84, 76, 82, 118, 120, 100, 114, 114, 117, 51, 37, 80, 85, 113, 65, 54])
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    plain_text = unpad(cipher.decrypt(packet), AES.block_size)
+    return plain_text.hex()
+
+def decrypt_api(cipher_text):
+    key = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
+    iv = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 37])
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    plain_text = unpad(cipher.decrypt(bytes.fromhex(cipher_text)), AES.block_size)
+    return plain_text.hex()
+
+def encrypt_api(plain_text):
+    plain_text = bytes.fromhex(plain_text)
+    key = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
+    iv = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 37])
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
+    return cipher_text.hex()
+
+# Original app.py code
+def load_tokens(server_name):
+    try:
+        if server_name == "IND":
+            path = "token_ind.json"
+        elif server_name in {"BR", "US", "SAC", "NA"}:
+            path = "token_br.json"
+        else:
+            path = "token_bd.json"
+
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        tokens = [item["token"] for item in data if "token" in item and item["token"] not in ["", "N/A"]]
         return tokens
     except Exception as e:
-        return None
+        app.logger.error(f"❌ Token load error for {server_name}: {e}")
+        return []
 
-def encrypt_message(plaintext):
-    try:
-        key = b'Yg&tc%DEuh6%Zc^8'
-        iv = b'6oyZDr22E3ychjM%'
-        cipher = AES.new(key, AES.MODE_CBC, iv)
-        padded_message = pad(plaintext, AES.block_size)
-        encrypted_message = cipher.encrypt(padded_message)
-        return binascii.hexlify(encrypted_message).decode('utf-8')
-    except Exception as e:
-        return None
-
-def create_protobuf(uid):
-    try:
-        message = uid_generator_pb2.uid_generator()
-        message.ujjaiwal_ = int(uid)
-        message.garena = 1
-        return message.SerializeToString()
-    except Exception as e:
-        return None
-
-def enc(uid):
-    protobuf_data = create_protobuf(uid)
-    if protobuf_data is None:
-        return None
-    encrypted_uid = encrypt_message(protobuf_data)
-    return encrypted_uid
-
-async def make_request_async(encrypt, region, token, session):
-    try:
-        if region == "IND":
-            url = "https://client.ind.freefiremobile.com/GetPlayerPersonalShow"
-        elif region in {"BR", "US", "SAC", "NA"}:
-            url = "https://client.us.freefiremobile.com/GetPlayerPersonalShow"
-        else:
-            url = "https://clientbp.ggblueshark.com/GetPlayerPersonalShow"
-            
-        edata = bytes.fromhex(encrypt)
-        headers = {
-            'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 9; ASUS_Z01QD Build/PI)",
-            'Connection': "Keep-Alive",
-            'Accept-Encoding': "gzip",
-            'Authorization': f"Bearer {token}",
-            'Content-Type': "application/x-www-form-urlencoded",
-            'Expect': "100-continue",
-            'X-Unity-Version': "2018.4.11f1",
-            'X-GA': "v1 1",
-            'ReleaseVersion': "OB50"
-        }
-        
-        async with session.post(url, data=edata, headers=headers, ssl=False, timeout=5) as response:
-            if response.status != 200:
-                return None
-            else:
-                binary = await response.read()
-                return decode_protobuf(binary)
-    except Exception as e:
-        return None
-
-def decode_protobuf(binary):
-    try:
-        items = CSVisit_count_pb2.Info()
-        items.ParseFromString(binary)
-        return items
-    except Exception as e:
-        return None
-
-def extract_player_info(protobuf_obj):
-    if not protobuf_obj:
-        return None, None, None
-    
-    try:
-        # Extract information directly from the protobuf object
-        if hasattr(protobuf_obj, 'AccountInfo'):
-            account_info = protobuf_obj.AccountInfo
-            player_name = account_info.PlayerNickname if account_info.PlayerNickname else None
-            player_level = account_info.Levels if account_info.Levels else None
-            player_likes = account_info.Likes if account_info.Likes else None
-            return player_name, player_level, player_likes
-        return None, None, None
-    except Exception as e:
-        return None, None, None
-
-# Key management endpoints
-@app.route('/make_key', methods=['GET'])
-def make_key():
-    key = request.args.get('key')
-    if not key:
-        return jsonify({'error': 'Missing key parameter'}), 400
-    api_keys.add(key)  # Add key to the set
-    return jsonify({'message': 'Key added successfully', 'key': key}), 200
-
-@app.route('/del_key', methods=['GET'])
-def del_key():
-    key = request.args.get('key')
-    if not key:
-        return jsonify({'error': 'Missing key parameter'}), 400
-    if key in api_keys:
-        api_keys.remove(key)
-        return jsonify({'message': 'Key deleted successfully', 'key': key}), 200
+def get_url(server_name):
+    if server_name == "IND":
+        return "https://client.ind.freefiremobile.com/GetPlayerPersonalShow"
+    elif server_name in {"BR", "US", "SAC", "NA"}:
+        return "https://client.us.freefiremobile.com/GetPlayerPersonalShow"
     else:
-        return jsonify({'error': 'Key not found'}), 404
+        return "https://clientbp.ggblueshark.com/GetPlayerPersonalShow"
 
-@app.route('/del_all_keys', methods=['GET'])
-def del_all_keys():
-    api_keys.clear()
-    return jsonify({'message': 'All keys deleted successfully'}), 200
-
-@app.route('/all_keys', methods=['GET'])
-def all_keys():
-    return jsonify({'keys': list(api_keys)}), 200
-
-# Verify key function
-def verify_key(key):
-    return key in api_keys
-
-# Protect the visit endpoint with API key authentication
-@app.route('/visit', methods=['GET'])
-async def visit():
-    # Check for API key
-    api_key = request.args.get("key")
-    if not api_key or not verify_key(api_key):
-        return jsonify({"error": "Valid API key is required"}), 401
-        
-    target_uid = request.args.get("uid")
-    region = request.args.get("region", "").upper()
-    
-    if not all([target_uid, region]):
-        return jsonify({"error": "UID and region are required"}), 400
-        
+def parse_protobuf_response(response_data):
     try:
-        tokens = load_tokens(region)
-        if tokens is None:
-            raise Exception("Failed to load tokens.")
-            
-        encrypted_target_uid = enc(target_uid)
-        if encrypted_target_uid is None:
-            raise Exception("Encryption of target UID failed.")
-            
-        total_visits = len(tokens) * 20
-        success_count = 0
-        failed_count = 0
-        player_name = None
-        player_level = None
-        player_likes = None
+        info = Info()
+        info.ParseFromString(response_data)
         
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for token in tokens:
-                for _ in range(20):
-                    tasks.append(make_request_async(encrypted_target_uid, region, token['token'], session))
-            
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            for response in responses:
-                if response and isinstance(response, CSVisit_count_pb2.Info):
-                    success_count += 1
-                    # Extract player info from the first successful response
-                    if player_name is None:
-                        player_name, player_level, player_likes = extract_player_info(response)
-                else:
-                    failed_count += 1
-                
-        summary = {
-            "TotalVisits": total_visits,
-            "SuccessfulVisits": success_count,
-            "FailedVisits": failed_count,
-            "PlayerNickname": player_name,
-            "PlayerLevel": player_level,
-            "PlayerLikes": player_likes,
-            "UID": int(target_uid),
-            "TotalResponses": len(responses)
+        player_data = {
+            "uid": info.AccountInfo.UID if info.AccountInfo.UID else 0,
+            "nickname": info.AccountInfo.PlayerNickname if info.AccountInfo.PlayerNickname else "",
+            "likes": info.AccountInfo.Likes if info.AccountInfo.Likes else 0,
+            "region": info.AccountInfo.PlayerRegion if info.AccountInfo.PlayerRegion else "",
+            "level": info.AccountInfo.Levels if info.AccountInfo.Levels else 0
         }
-        
-        return jsonify(summary)
-        
+        return player_data
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"❌ Protobuf parsing error: {e}")
+        return None
 
-if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
+async def visit(session, url, token, uid, data):
+    headers = {
+        "ReleaseVersion": "OB50",
+        "X-GA": "v1 1",
+        "Authorization": f"Bearer {token}",
+        "Host": url.replace("https://", "").split("/")[0]
+    }
+    try:
+        async with session.post(url, headers=headers, data=data, ssl=False) as resp:
+            if resp.status == 200:
+                response_data = await resp.read()
+                return True, response_data
+            else:
+                return False, None
+    except Exception as e:
+        app.logger.error(f"❌ Visit error: {e}")
+        return False, None
+
+async def send_until_1000_success(tokens, uid, server_name, target_success=1000):
+    url = get_url(server_name)
+    connector = aiohttp.TCPConnector(limit=0)
+    total_success = 0
+    total_sent = 0
+    first_success_response = None
+    player_info = None
+
+    async with aiohttp.ClientSession(connector=connector) as session:
+        encrypted = encrypt_api("08" + Encrypt_ID(str(uid)) + "1801")
+        data = bytes.fromhex(encrypted)
+
+        while total_success < target_success:
+            batch_size = min(target_success - total_success, 1000)
+            tasks = [
+                asyncio.create_task(visit(session, url, tokens[(total_sent + i) % len(tokens)], uid, data))
+                for i in range(batch_size)
+            ]
+            results = await asyncio.gather(*tasks)
+            
+            if first_success_response is None:
+                for success, response in results:
+                    if success and response is not None:
+                        first_success_response = response
+                        player_info = parse_protobuf_response(response)
+                        break
+            
+            batch_success = sum(1 for r, _ in results if r)
+            total_success += batch_success
+            total_sent += batch_size
+
+            print(f"Batch sent: {batch_size}, Success in batch: {batch_success}, Total success so far: {total_success}")
+
+    return total_success, total_sent, player_info
+
+@app.route('/<string:server>/<int:uid>', methods=['GET'])
+def send_visits(server, uid):
+    server = server.upper()
+    tokens = load_tokens(server)
+    target_success = 1000
+
+    if not tokens:
+        return jsonify({"error": "❌ No valid tokens found"}), 500
+
+    print(f"🚀 Sending visits to UID: {uid} using {len(tokens)} tokens")
+    print(f"Waiting for total {target_success} successful visits...")
+
+    total_success, total_sent, player_info = asyncio.run(send_until_1000_success(
+        tokens, uid, server,
+        target_success=target_success
+    ))
+
+    if player_info:
+        player_info_response = {
+            "FailedVisit": target_success - total_success,
+            "PlayerLevel": player_info.get("level", 0),
+            "PlayerLikes": player_info.get("likes", 0),
+            "PlayerNickname": player_info.get("nickname", ""),
+            "PlayerRgion": player_info.get("region", ""),
+            "SuccessfulVisits": total_success,
+            "UID": player_info.get("uid", 0)
+        }
+        return jsonify(player_info_response), 200
+    else:
+        return jsonify({"error": "Could not decode player information"}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
