@@ -120,7 +120,7 @@ def encrypt_api(plain_text):
     cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
     return cipher_text.hex()
 
-# Original app.py code
+# Original
 def load_tokens(server_name):
     try:
         if server_name == "IND":
@@ -182,7 +182,7 @@ async def visit(session, url, token, uid, data):
         app.logger.error(f"❌ Visit error: {e}")
         return False, None
 
-async def send_until_1000_success(tokens, uid, server_name, target_success=1000):
+async def send_until_100_success(tokens, uid, server_name, target_success=100):
     url = get_url(server_name)
     connector = aiohttp.TCPConnector(limit=0)
     total_success = 0
