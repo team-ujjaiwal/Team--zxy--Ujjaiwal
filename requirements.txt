@@ -1,4 +1,5 @@
-flask
-aiohttp
-protobuf
+flask[async]
 pycryptodome
+aiohttp
+urllib3
+protobuf
